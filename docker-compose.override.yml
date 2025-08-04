@@ -110,6 +110,7 @@ services:
       - ./frontend/tsconfig.json:/app/tsconfig.json
       - ./frontend/tsconfig.node.json:/app/tsconfig.node.json
       - ./frontend/index.html:/app/index.html
+      - ./frontend/.env:/app/.env
 
   playwright:
     build:
