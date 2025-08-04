@@ -28,19 +28,23 @@ def init(db_engine: Engine) -> None:
             session.exec(select(1))
             
             # Create sample audit log data if no audit logs exist
-            from app.models import AuditLog
-            existing_audit_logs = session.exec(select(AuditLog).limit(1)).first()
-            if not existing_audit_logs:
-                logger.info("Creating sample audit log data...")
-                # Get the first user (superuser) to create audit logs for
-                user = session.exec(select(User).limit(1)).first()
-                if user:
-                    sample_logs = crud.create_sample_audit_logs(session=session, user=user)
-                    logger.info(f"Created {len(sample_logs)} sample audit log entries")
+            try:
+                from app.models import AuditLog
+                existing_audit_logs = session.exec(select(AuditLog).limit(1)).first()
+                if not existing_audit_logs:
+                    logger.info("Creating sample audit log data...")
+                    # Get the first user (superuser) to create audit logs for
+                    user = session.exec(select(User).limit(1)).first()
+                    if user:
+                        sample_logs = crud.create_sample_audit_logs(session=session, user=user)
+                        logger.info(f"Created {len(sample_logs)} sample audit log entries")
+                    else:
+                        logger.warning("No users found to create sample audit logs for")
                 else:
-                    logger.warning("No users found to create sample audit logs for")
-            else:
-                logger.info("Sample audit log data already exists, skipping creation")
+                    logger.info("Sample audit log data already exists, skipping creation")
+            except Exception as e:
+                logger.warning(f"Could not create sample audit log data: {e}")
+                logger.info("This is normal if the audit log table doesn't exist yet")
                 
     except Exception as e:
         logger.error(e)
