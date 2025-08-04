@@ -1,5 +1,5 @@
 # Stage 0, "build-stage", based on Node.js, to build and compile the frontend
-FROM node:20 AS build-stage
+FROM node:24 AS build-stage
 
 WORKDIR /app
 
@@ -24,7 +24,7 @@ COPY ./nginx-backend-not-found.conf /etc/nginx/extra-conf.d/backend-not-found.co
 
 
 # Development stage for Docker Compose watch
-FROM node:20 AS development
+FROM node:24 AS development
 
 WORKDIR /app
 
