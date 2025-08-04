@@ -237,3 +237,9 @@ Check the file [release-notes.md](./release-notes.md).
 ## License
 
 The Full Stack FastAPI Template is licensed under the terms of the MIT license.
+
+## Clean all
+
+docker compose down
+docker volume rm full-stack-fastapi_app-db-data
+docker compose up -d

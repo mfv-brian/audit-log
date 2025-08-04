@@ -5,6 +5,8 @@ from sqlmodel import Session, select
 from tenacity import after_log, before_log, retry, stop_after_attempt, wait_fixed
 
 from app.core.db import engine
+from app import crud
+from app.models import User
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -24,6 +26,22 @@ def init(db_engine: Engine) -> None:
         with Session(db_engine) as session:
             # Try to create session to check if DB is awake
             session.exec(select(1))
+            
+            # Create sample audit log data if no audit logs exist
+            from app.models import AuditLog
+            existing_audit_logs = session.exec(select(AuditLog).limit(1)).first()
+            if not existing_audit_logs:
+                logger.info("Creating sample audit log data...")
+                # Get the first user (superuser) to create audit logs for
+                user = session.exec(select(User).limit(1)).first()
+                if user:
+                    sample_logs = crud.create_sample_audit_logs(session=session, user=user)
+                    logger.info(f"Created {len(sample_logs)} sample audit log entries")
+                else:
+                    logger.warning("No users found to create sample audit logs for")
+            else:
+                logger.info("Sample audit log data already exists, skipping creation")
+                
     except Exception as e:
         logger.error(e)
         raise e

@@ -44,6 +44,7 @@ class User(UserBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     hashed_password: str
     items: list["Item"] = Relationship(back_populates="owner", cascade_delete=True)
+    audit_logs: list["AuditLog"] = Relationship(back_populates="user", cascade_delete=True)
 
 
 # Properties to return via API, id is always required
@@ -95,6 +96,86 @@ class ItemsPublic(SQLModel):
 # Generic message
 class Message(SQLModel):
     message: str
+
+
+# Audit Log Models
+from enum import Enum
+from datetime import datetime
+from typing import Any, Dict
+from sqlalchemy import JSON
+
+
+class AuditAction(str, Enum):
+    CREATE = "CREATE"
+    UPDATE = "UPDATE"
+    DELETE = "DELETE"
+    VIEW = "VIEW"
+    LOGIN = "LOGIN"
+    LOGOUT = "LOGOUT"
+    EXPORT = "EXPORT"
+    IMPORT = "IMPORT"
+
+
+class AuditSeverity(str, Enum):
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    CRITICAL = "CRITICAL"
+
+
+# Shared properties for audit log
+class AuditLogBase(SQLModel):
+    action: AuditAction
+    resource_type: str = Field(max_length=100)
+    resource_id: str = Field(max_length=255)
+    user_agent: str | None = Field(default=None, max_length=500)
+    ip_address: str | None = Field(default=None, max_length=45)
+    before_state: str | None = Field(default=None, max_length=10000)
+    after_state: str | None = Field(default=None, max_length=10000)
+    custom_metadata: str | None = Field(default=None, max_length=10000)
+    severity: AuditSeverity = Field(default=AuditSeverity.INFO)
+    tenant_id: str | None = Field(default=None, max_length=255)
+
+
+# Properties to receive via API on creation
+class AuditLogCreate(AuditLogBase):
+    pass
+
+
+# Properties to receive via API on update
+class AuditLogUpdate(SQLModel):
+    action: AuditAction | None = None
+    resource_type: str | None = Field(default=None, max_length=100)
+    resource_id: str | None = Field(default=None, max_length=255)
+    user_agent: str | None = Field(default=None, max_length=500)
+    ip_address: str | None = Field(default=None, max_length=45)
+    before_state: str | None = None
+    after_state: str | None = None
+    custom_metadata: str | None = None
+    severity: AuditSeverity | None = None
+    tenant_id: str | None = Field(default=None, max_length=255)
+
+
+# Database model for audit log
+class AuditLog(AuditLogBase, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: uuid.UUID = Field(foreign_key="user.id", nullable=False, ondelete="CASCADE")
+    session_id: str | None = Field(default=None, max_length=255)
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    user: User | None = Relationship(back_populates="audit_logs")
+
+
+# Properties to return via API
+class AuditLogPublic(AuditLogBase):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    session_id: str | None
+    timestamp: datetime
+
+
+class AuditLogsPublic(SQLModel):
+    data: list[AuditLogPublic]
+    count: int
 
 
 # JSON payload containing access token
