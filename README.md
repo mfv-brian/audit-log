@@ -58,6 +58,39 @@ You can **just fork or clone** this repository and use it as is.
 
 ✨ It just works. ✨
 
+## Load Testing Audit Log API
+
+A script `load-test.sh` is provided to stress test the audit log API by sending multiple requests per second with random data.
+
+### Usage
+
+```bash
+./load-test.sh [interval_seconds] [requests_per_interval]
+```
+- `interval_seconds`: Time between each batch of requests (default: 1 second)
+- `requests_per_interval`: Number of requests sent per batch (default: 3)
+
+Example: Send 3 requests every 1 second (default)
+```bash
+./load-test.sh
+```
+
+Example: Send 5 requests every 2 seconds
+```bash
+./load-test.sh 2 5
+```
+
+### Automatic Login
+- The script will automatically use credentials from the `.env` file (`FIRST_SUPERUSER` and `FIRST_SUPERUSER_PASSWORD`).
+- If `.env` is not found, it will use the defaults: `admin@example.com` / `changethis`.
+
+### Requirements
+- Requires `curl` (mandatory) and `jq` (optional, for prettier JSON formatting).
+
+### Purpose
+- To test the performance, stability, and load capacity of the audit log API.
+- The data sent is random, suitable for stress-testing the logging system.
+
 ### How to Use a Private Repository
 
 If you want to have a private repository, GitHub won't allow you to simply fork it as it doesn't allow changing the visibility of forks.
