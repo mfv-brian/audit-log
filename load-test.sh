@@ -4,8 +4,8 @@
 # Usage: ./load-test.sh [interval_seconds] [requests_per_interval]
 
 # Default values
-INTERVAL=${1:-1}  # Default: 1 second
-REQUESTS_PER_INTERVAL=${2:-3}  # Default: 3 requests
+INTERVAL=${1:-10}  # Default: 1 second
+REQUESTS_PER_INTERVAL=${2:-1}  # Default: 3 requests
 
 # API Configuration
 API_BASE_URL="http://localhost:8000/api/v1"
@@ -94,6 +94,10 @@ generate_random_audit_data() {
     SEVERITIES=("INFO" "WARNING" "ERROR" "CRITICAL")
     RANDOM_SEVERITY=${SEVERITIES[$RANDOM % ${#SEVERITIES[@]}]}
     
+    # Random tenant IDs
+    TENANT_IDS=("tenant-main" "tenant-secondary" "tenant-dev" "tenant-prod" "tenant-test" "tenant-staging")
+    RANDOM_TENANT_ID=${TENANT_IDS[$RANDOM % ${#TENANT_IDS[@]}]}
+    
     # Random IP addresses
     IPS=("192.168.1.100" "10.0.0.50" "172.16.0.25" "203.0.113.10" "198.51.100.5")
     RANDOM_IP=${IPS[$RANDOM % ${#IPS[@]}]}
@@ -125,6 +129,7 @@ generate_random_audit_data() {
             --arg resource_type "$RANDOM_RESOURCE_TYPE" \
             --arg resource_id "$RANDOM_RESOURCE_ID" \
             --arg severity "$RANDOM_SEVERITY" \
+            --arg tenant_id "$RANDOM_TENANT_ID" \
             --arg user_agent "$RANDOM_USER_AGENT" \
             --arg ip_address "$RANDOM_IP" \
             --arg custom_metadata "$RANDOM_METADATA" \
@@ -133,17 +138,19 @@ generate_random_audit_data() {
                 resource_type: $resource_type,
                 resource_id: $resource_id,
                 severity: $severity,
+                tenant_id: $tenant_id,
                 user_agent: $user_agent,
                 ip_address: $ip_address,
                 custom_metadata: $custom_metadata
             }'
     else
         # Fallback to printf if jq is not available
-        printf '{"action":"%s","resource_type":"%s","resource_id":"%s","severity":"%s","user_agent":"%s","ip_address":"%s","custom_metadata":"%s"}' \
+        printf '{"action":"%s","resource_type":"%s","resource_id":"%s","severity":"%s","tenant_id":"%s","user_agent":"%s","ip_address":"%s","custom_metadata":"%s"}' \
             "$RANDOM_ACTION" \
             "$RANDOM_RESOURCE_TYPE" \
             "$RANDOM_RESOURCE_ID" \
             "$RANDOM_SEVERITY" \
+            "$RANDOM_TENANT_ID" \
             "$RANDOM_USER_AGENT" \
             "$RANDOM_IP" \
             "$RANDOM_METADATA"
@@ -173,7 +180,7 @@ send_audit_request() {
     
     if [ "$HTTP_STATUS" -eq 200 ] || [ "$HTTP_STATUS" -eq 201 ]; then
         print_success "Request $request_num/$total_requests completed (HTTP $HTTP_STATUS)"
-        echo "$AUDIT_DATA" | jq -r '.action + " -> " + .resource_type + ":" + .resource_id' 2>/dev/null || echo "Data sent successfully"
+        echo "$AUDIT_DATA" | jq -r '.action + " -> " + .resource_type + ":" + .resource_id + " (tenant: " + .tenant_id + ")"' 2>/dev/null || echo "Data sent successfully"
     else
         print_error "Request $request_num/$total_requests failed (HTTP $HTTP_STATUS)"
         echo "Response: $RESPONSE_BODY"
