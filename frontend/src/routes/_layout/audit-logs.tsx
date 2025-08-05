@@ -1,16 +1,21 @@
 import {
   Badge,
+  Box,
+  Button,
   Container,
   EmptyState,
   Flex,
+  HStack,
   Heading,
+  Input,
   Table,
   Text,
   VStack,
 } from "@chakra-ui/react"
 import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import { FiActivity, FiSearch } from "react-icons/fi"
+import { useMemo, useState } from "react"
+import { FiActivity, FiFilter, FiSearch, FiX } from "react-icons/fi"
 import { z } from "zod"
 
 import { AuditLogsService } from "@/client"
@@ -23,18 +28,61 @@ import {
 
 const auditLogsSearchSchema = z.object({
   page: z.number().catch(1),
+  action: z.string().optional(),
+  resourceType: z.string().optional(),
+  severity: z.string().optional(),
+  tenantId: z.string().optional(),
+  userId: z.string().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
 })
 
 const PER_PAGE = 10
 
-function getAuditLogsQueryOptions({ page }: { page: number }) {
+function getAuditLogsQueryOptions({
+  page,
+  action,
+  resourceType,
+  severity,
+  tenantId,
+  userId,
+  startDate,
+  endDate,
+}: {
+  page: number
+  action?: string
+  resourceType?: string
+  severity?: string
+  tenantId?: string
+  userId?: string
+  startDate?: string
+  endDate?: string
+}) {
   return {
     queryFn: () =>
       AuditLogsService.readAuditLogs({
         skip: (page - 1) * PER_PAGE,
         limit: PER_PAGE,
+        action: action as any,
+        resourceType,
+        severity: severity as any,
+        tenantId,
+        startDate: startDate ? new Date(startDate).toISOString() : undefined,
+        endDate: endDate ? new Date(endDate).toISOString() : undefined,
       }),
-    queryKey: ["audit-logs", { page }],
+    queryKey: [
+      "audit-logs",
+      {
+        page,
+        action,
+        resourceType,
+        severity,
+        tenantId,
+        userId,
+        startDate,
+        endDate,
+      },
+    ],
   }
 }
 
@@ -82,29 +130,265 @@ function getActionColor(action: string) {
 }
 
 function formatTimestamp(timestamp: string) {
-  return new Date(timestamp).toLocaleString('en-GB', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
+  return new Date(timestamp).toLocaleString("en-GB", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
   })
+}
+
+// Filter options
+const ACTION_OPTIONS = [
+  { value: "", label: "All Actions" },
+  { value: "CREATE", label: "Create" },
+  { value: "UPDATE", label: "Update" },
+  { value: "DELETE", label: "Delete" },
+  { value: "VIEW", label: "View" },
+  { value: "LOGIN", label: "Login" },
+  { value: "LOGOUT", label: "Logout" },
+  { value: "EXPORT", label: "Export" },
+  { value: "IMPORT", label: "Import" },
+]
+
+const SEVERITY_OPTIONS = [
+  { value: "", label: "All Severities" },
+  { value: "INFO", label: "Info" },
+  { value: "WARNING", label: "Warning" },
+  { value: "ERROR", label: "Error" },
+  { value: "CRITICAL", label: "Critical" },
+]
+
+const RESOURCE_TYPE_OPTIONS = [
+  { value: "", label: "All Resources" },
+  { value: "user", label: "User" },
+  { value: "item", label: "Item" },
+  { value: "items", label: "Items" },
+]
+
+function AuditLogsFilters() {
+  const navigate = useNavigate({ from: Route.fullPath })
+  const search = Route.useSearch()
+  const [showFilters, setShowFilters] = useState(false)
+
+  const updateFilters = (updates: Partial<typeof search>) => {
+    navigate({
+      search: { ...search, ...updates, page: 1 }, // Reset to page 1 when filtering
+    })
+  }
+
+  const clearFilters = () => {
+    navigate({
+      search: { page: 1 },
+    })
+  }
+
+  const hasActiveFilters = useMemo(() => {
+    return Object.keys(search).some(
+      (key) =>
+        key !== "page" &&
+        search[key as keyof typeof search] &&
+        search[key as keyof typeof search] !== "",
+    )
+  }, [search])
+
+  return (
+    <Box mb={6}>
+      <Flex justify="space-between" align="center" mb={4}>
+        <HStack>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            <FiFilter />
+            Filters
+          </Button>
+          {hasActiveFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearFilters}
+              colorScheme="red"
+            >
+              <FiX />
+              Clear All
+            </Button>
+          )}
+        </HStack>
+        {hasActiveFilters && (
+          <Text fontSize="sm" color="gray.600">
+            {
+              Object.keys(search).filter(
+                (key) =>
+                  key !== "page" &&
+                  search[key as keyof typeof search] &&
+                  search[key as keyof typeof search] !== "",
+              ).length
+            }{" "}
+            active filters
+          </Text>
+        )}
+      </Flex>
+
+      {showFilters && (
+        <Box
+          p={4}
+          border="1px"
+          borderColor="gray.200"
+          borderRadius="md"
+          bg="gray.50"
+        >
+          <VStack gap={4} align="stretch">
+            <HStack gap={4}>
+              <Box flex={1}>
+                <Text fontSize="sm" mb={2}>
+                  Action Type
+                </Text>
+                <Input
+                  size="sm"
+                  placeholder="All Actions"
+                  value={search.action || ""}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    updateFilters({ action: e.target.value || undefined })
+                  }
+                  list="action-options"
+                />
+                <datalist id="action-options">
+                  {ACTION_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </datalist>
+              </Box>
+
+              <Box flex={1}>
+                <Text fontSize="sm" mb={2}>
+                  Resource Type
+                </Text>
+                <Input
+                  size="sm"
+                  placeholder="All Resources"
+                  value={search.resourceType || ""}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    updateFilters({ resourceType: e.target.value || undefined })
+                  }
+                  list="resource-options"
+                />
+                <datalist id="resource-options">
+                  {RESOURCE_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </datalist>
+              </Box>
+
+              <Box flex={1}>
+                <Text fontSize="sm" mb={2}>
+                  Severity
+                </Text>
+                <Input
+                  size="sm"
+                  placeholder="All Severities"
+                  value={search.severity || ""}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    updateFilters({ severity: e.target.value || undefined })
+                  }
+                  list="severity-options"
+                />
+                <datalist id="severity-options">
+                  {SEVERITY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </datalist>
+              </Box>
+            </HStack>
+
+            <HStack gap={4}>
+              <Box flex={1}>
+                <Text fontSize="sm" mb={2}>
+                  Tenant ID
+                </Text>
+                <Input
+                  size="sm"
+                  placeholder="Enter tenant ID"
+                  value={search.tenantId || ""}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    updateFilters({ tenantId: e.target.value || undefined })
+                  }
+                />
+              </Box>
+
+              <Box flex={1}>
+                <Text fontSize="sm" mb={2}>
+                  User ID
+                </Text>
+                <Input
+                  size="sm"
+                  placeholder="Enter user ID"
+                  value={search.userId || ""}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    updateFilters({ userId: e.target.value || undefined })
+                  }
+                />
+              </Box>
+            </HStack>
+
+            <HStack gap={4}>
+              <Box flex={1}>
+                <Text fontSize="sm" mb={2}>
+                  Start Date
+                </Text>
+                <Input
+                  size="sm"
+                  type="datetime-local"
+                  value={search.startDate || ""}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    updateFilters({ startDate: e.target.value || undefined })
+                  }
+                />
+              </Box>
+
+              <Box flex={1}>
+                <Text fontSize="sm" mb={2}>
+                  End Date
+                </Text>
+                <Input
+                  size="sm"
+                  type="datetime-local"
+                  value={search.endDate || ""}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    updateFilters({ endDate: e.target.value || undefined })
+                  }
+                />
+              </Box>
+            </HStack>
+          </VStack>
+        </Box>
+      )}
+    </Box>
+  )
 }
 
 function AuditLogsTable() {
   const navigate = useNavigate({ from: Route.fullPath })
-  const { page } = Route.useSearch()
+  const search = Route.useSearch()
 
   const { data, isLoading, isPlaceholderData } = useQuery({
-    ...getAuditLogsQueryOptions({ page }),
+    ...getAuditLogsQueryOptions(search),
     placeholderData: (prevData) => prevData,
   })
 
   const setPage = (page: number) =>
     navigate({
-      search: (prev: { [key: string]: string }) => ({ ...prev, page }),
+      search: { ...search, page },
     })
 
   const auditLogs = data?.data.slice(0, PER_PAGE) ?? []
@@ -242,6 +526,7 @@ function AuditLogs() {
           Audit Logs
         </Flex>
       </Heading>
+      <AuditLogsFilters />
       <AuditLogsTable />
     </Container>
   )
