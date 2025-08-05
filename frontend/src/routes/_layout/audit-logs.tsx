@@ -12,19 +12,27 @@ import {
   Text,
   VStack,
 } from "@chakra-ui/react"
-import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import { useMemo, useState } from "react"
-import { FiActivity, FiFilter, FiSearch, FiX } from "react-icons/fi"
+import type React from "react"
+import { useEffect, useMemo, useState } from "react"
+import {
+  FiActivity,
+  FiFilter,
+  FiSearch,
+  FiWifi,
+  FiWifiOff,
+  FiX,
+} from "react-icons/fi"
 import { z } from "zod"
 
-import { AuditLogsService } from "@/client"
+import { type AuditLogPublic, AuditLogsService } from "@/client"
 import {
   PaginationItems,
   PaginationNextTrigger,
   PaginationPrevTrigger,
   PaginationRoot,
 } from "@/components/ui/pagination.tsx"
+import { useSSE } from "@/hooks/useSSE"
 
 const auditLogsSearchSchema = z.object({
   page: z.number().catch(1),
@@ -59,30 +67,14 @@ function getAuditLogsQueryOptions({
   endDate?: string
 }) {
   return {
-    queryFn: () =>
-      AuditLogsService.readAuditLogs({
-        skip: (page - 1) * PER_PAGE,
-        limit: PER_PAGE,
-        action: action as any,
-        resourceType,
-        severity: severity as any,
-        tenantId,
-        startDate: startDate ? new Date(startDate).toISOString() : undefined,
-        endDate: endDate ? new Date(endDate).toISOString() : undefined,
-      }),
-    queryKey: [
-      "audit-logs",
-      {
-        page,
-        action,
-        resourceType,
-        severity,
-        tenantId,
-        userId,
-        startDate,
-        endDate,
-      },
-    ],
+    skip: (page - 1) * PER_PAGE,
+    limit: PER_PAGE,
+    action: action as any,
+    resourceType,
+    severity: severity as any,
+    tenantId,
+    startDate: startDate ? new Date(startDate).toISOString() : undefined,
+    endDate: endDate ? new Date(endDate).toISOString() : undefined,
   }
 }
 
@@ -380,10 +372,77 @@ function AuditLogsFilters() {
 function AuditLogsTable() {
   const navigate = useNavigate({ from: Route.fullPath })
   const search = Route.useSearch()
+  
+  // Single state for all audit logs
+  const [auditLogs, setAuditLogs] = useState<AuditLogPublic[]>([])
+  const [totalCount, setTotalCount] = useState(0)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [hasInitialData, setHasInitialData] = useState(false)
 
-  const { data, isLoading, isPlaceholderData } = useQuery({
-    ...getAuditLogsQueryOptions(search),
-    placeholderData: (prevData) => prevData,
+  // Fetch audit logs from API
+  const fetchAuditLogs = async () => {
+    try {
+      setIsLoading(true)
+      setError(null)
+      
+      const options = getAuditLogsQueryOptions(search)
+      const response = await AuditLogsService.readAuditLogs(options)
+      
+      setAuditLogs(response.data || [])
+      setTotalCount(response.count || 0)
+      setHasInitialData(true)
+    } catch (err) {
+      console.error("Failed to fetch audit logs:", err)
+      setError("Failed to load audit logs")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Fetch data when search params change
+  useEffect(() => {
+    fetchAuditLogs()
+  }, [search.page, search.action, search.resourceType, search.severity, search.tenantId, search.userId, search.startDate, search.endDate])
+
+  // SSE connection for real-time updates
+  const { isConnected, connectionStatus } = useSSE({
+    url: `${import.meta.env.VITE_API_URL || "http://localhost:8000"}/api/v1/audit-logs/stream`,
+    withAuth: true,
+    minConnectionDelay: 2000,
+    autoReconnect: true,
+    reconnectInterval: 5000,
+    maxReconnectAttempts: 3,
+    onMessage: (message) => {
+      if (message.type === "audit_log" && hasInitialData) {
+        setAuditLogs((prevLogs) => {
+          // Add new log at the beginning
+          const newLogs = [message.data, ...prevLogs]
+          
+          // If we're on the first page, add the new log
+          if (search.page === 1) {
+            // Keep only the latest logs based on PER_PAGE
+            return newLogs.slice(0, PER_PAGE)
+          } else {
+            // If we're not on the first page, just update the count
+            // The new log will appear when user goes back to page 1
+            return prevLogs
+          }
+        })
+        
+        // Update total count
+        setTotalCount((prevCount) => prevCount + 1)
+      }
+    },
+    onConnect: () => {
+      console.log("Connected to audit logs SSE stream")
+    },
+    onDisconnect: () => {
+      console.log("Disconnected from audit logs SSE stream")
+    },
+    onError: (error) => {
+      console.error("SSE error:", error)
+    },
   })
 
   const setPage = (page: number) =>
@@ -391,8 +450,9 @@ function AuditLogsTable() {
       search: { ...search, page },
     })
 
-  const auditLogs = data?.data.slice(0, PER_PAGE) ?? []
-  const count = data?.count ?? 0
+  // Get current page logs
+  const currentPageLogs = auditLogs.slice(0, PER_PAGE)
+  const count = totalCount
 
   if (isLoading) {
     return (
@@ -419,7 +479,28 @@ function AuditLogsTable() {
     )
   }
 
-  if (auditLogs.length === 0) {
+  if (error) {
+    return (
+      <EmptyState.Root>
+        <EmptyState.Content>
+          <EmptyState.Indicator>
+            <FiSearch />
+          </EmptyState.Indicator>
+          <VStack textAlign="center">
+            <EmptyState.Title>Error loading audit logs</EmptyState.Title>
+            <EmptyState.Description>
+              {error}
+            </EmptyState.Description>
+            <Button onClick={fetchAuditLogs} colorScheme="blue">
+              Retry
+            </Button>
+          </VStack>
+        </EmptyState.Content>
+      </EmptyState.Root>
+    )
+  }
+
+  if (currentPageLogs.length === 0) {
     return (
       <EmptyState.Root>
         <EmptyState.Content>
@@ -439,6 +520,42 @@ function AuditLogsTable() {
 
   return (
     <>
+      {/* Real-time Connection Status */}
+      {hasInitialData && (
+        <Box
+          p={3}
+          mb={4}
+          borderRadius="md"
+          bg={isConnected ? "green.50" : "red.50"}
+          border="1px"
+          borderColor={isConnected ? "green.200" : "red.200"}
+        >
+          <Flex align="center" gap={3}>
+            {isConnected ? <FiWifi color="green" /> : <FiWifiOff color="red" />}
+            <Box flex="1">
+              <Text
+                fontSize="sm"
+                fontWeight="medium"
+                color={isConnected ? "green.800" : "red.800"}
+              >
+                {isConnected
+                  ? "Real-time updates active"
+                  : "Real-time updates disconnected"}
+              </Text>
+              <Text fontSize="xs" color={isConnected ? "green.700" : "red.700"}>
+                {isConnected
+                  ? "New audit logs will appear automatically"
+                  : "Not receiving real-time updates"}
+              </Text>
+            </Box>
+            <Badge colorScheme={isConnected ? "green" : "red"} size="sm">
+              {connectionStatus}
+            </Badge>
+          </Flex>
+        </Box>
+      )}
+
+      {/* Main Audit Logs Table */}
       <Table.Root size={{ base: "sm", md: "md" }}>
         <Table.Header>
           <Table.Row>
@@ -451,12 +568,24 @@ function AuditLogsTable() {
           </Table.Row>
         </Table.Header>
         <Table.Body>
-          {auditLogs?.map((log) => (
-            <Table.Row key={log.id} opacity={isPlaceholderData ? 0.5 : 1}>
+          {currentPageLogs?.map((log, index) => (
+            <Table.Row 
+              key={log.id} 
+              bg={index === 0 && search.page === 1 && isConnected ? "blue.50" : undefined}
+              borderLeft={index === 0 && search.page === 1 && isConnected ? "4px solid" : undefined}
+              borderLeftColor={index === 0 && search.page === 1 && isConnected ? "blue.500" : undefined}
+            >
               <Table.Cell>
-                <Badge colorScheme={getActionColor(log.action)} size="sm">
-                  {log.action}
-                </Badge>
+                <HStack gap={2}>
+                  <Badge colorScheme={getActionColor(log.action)} size="sm">
+                    {log.action}
+                  </Badge>
+                  {index === 0 && search.page === 1 && isConnected && (
+                    <Badge colorScheme="blue" size="sm">
+                      NEW
+                    </Badge>
+                  )}
+                </HStack>
               </Table.Cell>
               <Table.Cell>
                 <VStack align="start" gap={1}>

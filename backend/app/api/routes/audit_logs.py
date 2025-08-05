@@ -1,12 +1,15 @@
 import uuid
 import json
-from typing import Any
+import asyncio
+from typing import Any, AsyncGenerator
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from sqlmodel import func, select
 
 from app.api.deps import CurrentUser, SessionDep
+from app.core.sse import sse_manager
 from app.models import (
     AuditLog, 
     AuditLogCreate, 
@@ -76,6 +79,54 @@ def read_audit_logs(
     return AuditLogsPublic(data=audit_logs, count=count)
 
 
+@router.get("/stream")
+async def stream_audit_logs(
+    current_user: CurrentUser,
+    session: SessionDep,
+) -> StreamingResponse:
+    """
+    Server-Sent Events endpoint for real-time audit logs.
+    """
+    async def event_generator() -> AsyncGenerator[str, None]:
+        # Create a unique client ID
+        client_id = f"{current_user.id}_{id(current_user)}"
+        
+        # Connect to SSE manager
+        client_queue = await sse_manager.connect(client_id, "audit_logs")
+        
+        try:
+            # Send initial connection message
+            yield f"data: {json.dumps({'type': 'connection', 'message': 'Connected to audit logs stream', 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+            
+            # Keep connection alive and forward messages from queue
+            while True:
+                try:
+                    # Wait for messages from the queue with a timeout for heartbeats
+                    message = await asyncio.wait_for(client_queue.get(), timeout=30.0)
+                    yield message
+                except asyncio.TimeoutError:
+                    # Send heartbeat if no messages received
+                    yield f"data: {json.dumps({'type': 'heartbeat', 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+                
+        except asyncio.CancelledError:
+            # Client disconnected
+            pass
+        finally:
+            # Disconnect from SSE manager
+            sse_manager.disconnect(client_id, client_queue, "audit_logs")
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Cache-Control",
+        }
+    )
+
+
 @router.get("/{id}", response_model=AuditLogPublic)
 def read_audit_log(session: SessionDep, current_user: CurrentUser, id: uuid.UUID) -> Any:
     """
@@ -93,7 +144,7 @@ def read_audit_log(session: SessionDep, current_user: CurrentUser, id: uuid.UUID
 
 
 @router.post("/", response_model=AuditLogPublic)
-def create_audit_log(
+async def create_audit_log(
     *, 
     session: SessionDep, 
     current_user: CurrentUser, 
@@ -119,6 +170,19 @@ def create_audit_log(
     session.add(audit_log)
     session.commit()
     session.refresh(audit_log)
+    
+    # Convert to public model for SSE broadcast
+    audit_log_public = AuditLogPublic.model_validate(audit_log)
+    
+    # Broadcast via SSE (fire and forget)
+    try:
+        await sse_manager.broadcast_audit_log(audit_log_public)
+    except Exception as e:
+        # Log error but don't fail the audit log creation
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to broadcast audit log via SSE: {e}")
+    
     return audit_log
 
 
@@ -268,4 +332,4 @@ def log_action(
     session.add(audit_log)
     session.commit()
     session.refresh(audit_log)
-    return audit_log 
+    return audit_log
