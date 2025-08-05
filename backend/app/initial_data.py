@@ -27,7 +27,21 @@ def init() -> None:
                 else:
                     logger.warning("No users found to create sample audit logs for")
             else:
-                logger.info("Sample audit log data already exists, skipping creation")
+                # Clear existing audit logs and recreate with tenant_id
+                logger.info("Clearing existing audit logs to recreate with tenant_id...")
+                all_existing_logs = session.exec(select(AuditLog)).all()
+                for log in all_existing_logs:
+                    session.delete(log)
+                session.commit()
+                logger.info(f"Deleted {len(all_existing_logs)} existing audit logs")
+                
+                # Create new audit logs with tenant_id
+                user = session.exec(select(User).limit(1)).first()
+                if user:
+                    sample_logs = crud.create_sample_audit_logs(session=session, user=user)
+                    logger.info(f"Created {len(sample_logs)} new sample audit log entries with tenant_id")
+                else:
+                    logger.warning("No users found to create sample audit logs for")
         except Exception as e:
             logger.warning(f"Could not create sample audit log data: {e}")
             logger.info("This is normal if the audit log table doesn't exist yet")

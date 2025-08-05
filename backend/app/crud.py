@@ -76,6 +76,7 @@ def create_sample_audit_logs(*, session: Session, user: User) -> list[AuditLog]:
         severity=AuditSeverity.INFO,
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         ip_address="192.168.1.100",
+        tenant_id="tenant-main",
         custom_metadata='{"login_method": "password", "success": true}'
     )
     sample_logs.append(login_log)
@@ -89,6 +90,7 @@ def create_sample_audit_logs(*, session: Session, user: User) -> list[AuditLog]:
         severity=AuditSeverity.INFO,
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         ip_address="192.168.1.100",
+        tenant_id="tenant-main",
         before_state=None,
         after_state='{"title": "Sample Item", "description": "This is a sample item for testing"}',
         custom_metadata='{"item_type": "document", "category": "general"}'
@@ -104,6 +106,7 @@ def create_sample_audit_logs(*, session: Session, user: User) -> list[AuditLog]:
         severity=AuditSeverity.INFO,
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         ip_address="192.168.1.100",
+        tenant_id="tenant-main",
         before_state='{"title": "Sample Item", "description": "This is a sample item for testing"}',
         after_state='{"title": "Updated Sample Item", "description": "This is an updated sample item"}',
         custom_metadata='{"update_reason": "content improvement"}'
@@ -119,6 +122,7 @@ def create_sample_audit_logs(*, session: Session, user: User) -> list[AuditLog]:
         severity=AuditSeverity.INFO,
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         ip_address="192.168.1.100",
+        tenant_id="tenant-secondary",
         custom_metadata='{"export_format": "csv", "record_count": 25, "filters": {"status": "active"}}'
     )
     sample_logs.append(export_log)
@@ -132,6 +136,7 @@ def create_sample_audit_logs(*, session: Session, user: User) -> list[AuditLog]:
         severity=AuditSeverity.WARNING,
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         ip_address="192.168.1.100",
+        tenant_id="tenant-main",
         custom_metadata='{"warning_reason": "accessing_other_user_profile", "permission_level": "read_only"}'
     )
     sample_logs.append(warning_log)

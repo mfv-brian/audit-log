@@ -82,7 +82,15 @@ function getActionColor(action: string) {
 }
 
 function formatTimestamp(timestamp: string) {
-  return new Date(timestamp).toLocaleString()
+  return new Date(timestamp).toLocaleString('en-GB', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  })
 }
 
 function AuditLogsTable() {
@@ -153,7 +161,7 @@ function AuditLogsTable() {
             <Table.ColumnHeader w="sm">Action</Table.ColumnHeader>
             <Table.ColumnHeader w="sm">Resource</Table.ColumnHeader>
             <Table.ColumnHeader w="sm">Severity</Table.ColumnHeader>
-            <Table.ColumnHeader w="sm">User</Table.ColumnHeader>
+            <Table.ColumnHeader w="sm">User & Tenant</Table.ColumnHeader>
             <Table.ColumnHeader w="sm">Timestamp</Table.ColumnHeader>
             <Table.ColumnHeader w="sm">IP Address</Table.ColumnHeader>
           </Table.Row>
@@ -185,9 +193,14 @@ function AuditLogsTable() {
                 </Badge>
               </Table.Cell>
               <Table.Cell>
-                <Text fontSize="sm" fontFamily="mono">
-                  {log.user_id.slice(0, 8)}...
-                </Text>
+                <VStack align="start" gap={1}>
+                  <Text fontSize="sm" fontFamily="mono">
+                    {log.user_id.slice(0, 8)}...
+                  </Text>
+                  <Text fontSize="xs" color="gray.500" fontFamily="mono">
+                    {log.tenant_id || "N/A"}
+                  </Text>
+                </VStack>
               </Table.Cell>
               <Table.Cell>
                 <Text fontSize="sm" color="gray.600">
